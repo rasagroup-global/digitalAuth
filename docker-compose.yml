@@ -10,7 +10,6 @@ services:
     command:
       - start
       - --import-realm
-      - --optimized
     env_file: .env
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}

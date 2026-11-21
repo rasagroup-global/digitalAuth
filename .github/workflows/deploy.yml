@@ -103,6 +103,10 @@ jobs:
 
             # 3. Jalankan container Keycloak
             docker compose --project-name $PROJECT_NAME up -d --force-recreate
+            sleep 5
+            echo "==> Status & Log Awal Container $CONTAINER_NAME:"
+            docker ps -a --filter "name=$CONTAINER_NAME"
+            docker logs --tail 40 $CONTAINER_NAME || true
 
             # 4. Deteksi otomatis path mount ACME Challenge pada container rasa-shared-proxy
             ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
