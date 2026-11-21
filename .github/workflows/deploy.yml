@@ -12,18 +12,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Sync Files to VPS via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: root
-          key: ${{ secrets.DO_SSH_KEY }}
-          source: "realms,themes,config,scripts,docker-compose.yml,.env.example"
-          target: "/var/www/RASA/AUTH/${{ github.ref_name }}"
-
       - name: Deploy Keycloak Container & Reverse Proxy via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -33,6 +21,7 @@ jobs:
           script: |
             set -e
             BRANCH=${{ github.ref_name }}
+            REPO_URL="https://github.com/${{ github.repository }}.git"
 
             if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
                 DOMAIN="sso.rasagroup.global"
@@ -54,12 +43,26 @@ jobs:
             TARGET_DIR=/var/www/RASA/AUTH/$BRANCH
             PROXY_CONF=/var/www/RASA/INFRA/conf.d/$PROJECT_NAME.conf
 
-            mkdir -p $TARGET_DIR
-            cd $TARGET_DIR
+            mkdir -p /var/www/RASA/AUTH
 
-            # 1. Pastikan Database PostgreSQL untuk Keycloak sudah tersedia di api-shared-db
+            # 0. Sync repository langsung via Git di VPS (tanpa butuh scp-action)
+            if [ -d "$TARGET_DIR/.git" ]; then
+                cd $TARGET_DIR
+                git fetch origin $BRANCH
+                git checkout $BRANCH || git checkout -b $BRANCH origin/$BRANCH
+                git reset --hard origin/$BRANCH
+            else
+                rm -rf $TARGET_DIR
+                git clone --branch $BRANCH $REPO_URL $TARGET_DIR
+                cd $TARGET_DIR
+            fi
+
+            # 1. Pastikan script menggunakan LF line-endings & database PostgreSQL untuk Keycloak tersedia di api-shared-db
+            sed -i 's/\r$//' scripts/*.sh || true
             chmod +x scripts/*.sh || true
-            bash scripts/init-keycloak-db.sh "$KC_DB_NAME" "${{ secrets.DB_USERNAME || 'postgres' }}"
+            DB_USER="${{ secrets.DB_USERNAME }}"
+            [ -z "$DB_USER" ] && DB_USER="postgres"
+            bash scripts/init-keycloak-db.sh "$KC_DB_NAME" "$DB_USER"
 
             # 2. Generate .env
             KC_ADMIN_USER="${{ secrets.KC_ADMIN_USERNAME }}"
@@ -77,42 +80,38 @@ jobs:
             COMMERCE_SECRET="${{ secrets.KEYCLOAK_COMMERCE_CLIENT_SECRET }}"
             [ -z "$COMMERCE_SECRET" ] && COMMERCE_SECRET="rasa-commerce-secret-dev-2026"
 
-            cat > .env <<EOF
-            PROJECT_NAME=$PROJECT_NAME
-            DOCKER_TAG=26.0
-            KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER
-            KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS
-            KC_HOSTNAME=https://$DOMAIN
-            KC_HOSTNAME_STRICT=false
-            KC_HTTP_ENABLED=true
-            KC_PROXY_HEADERS=xforwarded
-            KC_HEALTH_ENABLED=true
-            KC_DB=postgres
-            KC_DB_URL_HOST=api-shared-db
-            KC_DB_URL_PORT=5432
-            KC_DB_URL_DATABASE=$KC_DB_NAME
-            KC_DB_USERNAME=${{ secrets.DB_USERNAME }}
-            KC_DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            KEYCLOAK_REALM=rasa
-            KEYCLOAK_API_CLIENT_SECRET=$API_SECRET
-            KEYCLOAK_CMS_CLIENT_SECRET=$CMS_SECRET
-            KEYCLOAK_COMMERCE_CLIENT_SECRET=$COMMERCE_SECRET
-            JAVA_OPTS_APPEND=-Xms256m -Xmx640m
-            EOF
+            echo "PROJECT_NAME=$PROJECT_NAME" > .env
+            echo "DOCKER_TAG=26.0" >> .env
+            echo "KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER" >> .env
+            echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS" >> .env
+            echo "KC_HOSTNAME=https://$DOMAIN" >> .env
+            echo "KC_HOSTNAME_STRICT=false" >> .env
+            echo "KC_HTTP_ENABLED=true" >> .env
+            echo "KC_PROXY_HEADERS=xforwarded" >> .env
+            echo "KC_HEALTH_ENABLED=true" >> .env
+            echo "KC_DB=postgres" >> .env
+            echo "KC_DB_URL_HOST=api-shared-db" >> .env
+            echo "KC_DB_URL_PORT=5432" >> .env
+            echo "KC_DB_URL_DATABASE=$KC_DB_NAME" >> .env
+            echo "KC_DB_USERNAME=$DB_USER" >> .env
+            echo "KC_DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "KEYCLOAK_REALM=rasa" >> .env
+            echo "KEYCLOAK_API_CLIENT_SECRET=$API_SECRET" >> .env
+            echo "KEYCLOAK_CMS_CLIENT_SECRET=$CMS_SECRET" >> .env
+            echo "KEYCLOAK_COMMERCE_CLIENT_SECRET=$COMMERCE_SECRET" >> .env
+            echo "JAVA_OPTS_APPEND=-Xms256m -Xmx640m" >> .env
 
             # 3. Jalankan container Keycloak
             docker compose --project-name $PROJECT_NAME up -d --force-recreate
 
             # 4. Request SSL Certbot jika belum ada
             if [ ! -d "/var/www/RASA/INFRA/certbot/conf/live/$DOMAIN" ]; then
-              cat > $PROXY_CONF <<EOF
-            server {
-                listen 80;
-                server_name $DOMAIN;
-                location /.well-known/acme-challenge/ { root /var/lib/letsencrypt; }
-                location / { return 301 https://\$host\$request_uri; }
-            }
-            EOF
+              echo "server {" > $PROXY_CONF
+              echo "    listen 80;" >> $PROXY_CONF
+              echo "    server_name $DOMAIN;" >> $PROXY_CONF
+              echo "    location /.well-known/acme-challenge/ { root /var/lib/letsencrypt; }" >> $PROXY_CONF
+              echo "    location / { return 301 https://\$host\$request_uri; }" >> $PROXY_CONF
+              echo "}" >> $PROXY_CONF
 
               docker exec rasa-shared-proxy nginx -s reload
 
@@ -126,38 +125,35 @@ jobs:
             fi
 
             # 5. Update Nginx Proxy ke HTTPS Reverse Proxy Keycloak
-            cat > $PROXY_CONF <<EOF
-            server {
-                listen 80;
-                server_name $DOMAIN;
-                location /.well-known/acme-challenge/ { root /var/lib/letsencrypt; }
-                location / { return 301 https://\$host\$request_uri; }
-            }
-            server {
-                listen 443 ssl;
-                server_name $DOMAIN;
-                ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-                ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-                include /etc/nginx/conf.d/proxy_params;
-                client_max_body_size 20M;
-                proxy_buffer_size 128k;
-                proxy_buffers 8 256k;
-                proxy_busy_buffers_size 256k;
-                large_client_header_buffers 4 32k;
-
-                location / {
-                    proxy_pass http://$CONTAINER_NAME:8080;
-                    proxy_http_version 1.1;
-                    proxy_set_header Host \$host;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto https;
-                    proxy_set_header X-Forwarded-Host \$host;
-                    proxy_set_header X-Forwarded-Port 443;
-                    proxy_read_timeout 120s;
-                }
-            }
-            EOF
+            echo "server {" > $PROXY_CONF
+            echo "    listen 80;" >> $PROXY_CONF
+            echo "    server_name $DOMAIN;" >> $PROXY_CONF
+            echo "    location /.well-known/acme-challenge/ { root /var/lib/letsencrypt; }" >> $PROXY_CONF
+            echo "    location / { return 301 https://\$host\$request_uri; }" >> $PROXY_CONF
+            echo "}" >> $PROXY_CONF
+            echo "server {" >> $PROXY_CONF
+            echo "    listen 443 ssl;" >> $PROXY_CONF
+            echo "    server_name $DOMAIN;" >> $PROXY_CONF
+            echo "    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;" >> $PROXY_CONF
+            echo "    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;" >> $PROXY_CONF
+            echo "    include /etc/nginx/conf.d/proxy_params;" >> $PROXY_CONF
+            echo "    client_max_body_size 20M;" >> $PROXY_CONF
+            echo "    proxy_buffer_size 128k;" >> $PROXY_CONF
+            echo "    proxy_buffers 8 256k;" >> $PROXY_CONF
+            echo "    proxy_busy_buffers_size 256k;" >> $PROXY_CONF
+            echo "    large_client_header_buffers 4 32k;" >> $PROXY_CONF
+            echo "    location / {" >> $PROXY_CONF
+            echo "        proxy_pass http://$CONTAINER_NAME:8080;" >> $PROXY_CONF
+            echo "        proxy_http_version 1.1;" >> $PROXY_CONF
+            echo "        proxy_set_header Host \$host;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-Proto https;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-Host \$host;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-Port 443;" >> $PROXY_CONF
+            echo "        proxy_read_timeout 120s;" >> $PROXY_CONF
+            echo "    }" >> $PROXY_CONF
+            echo "}" >> $PROXY_CONF
 
             docker exec rasa-shared-proxy nginx -s reload
             echo "Deployment Rasa SSO ($DOMAIN) selesai!"
