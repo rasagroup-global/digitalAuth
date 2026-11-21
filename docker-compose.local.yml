@@ -1,0 +1,46 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Local Development Override for digitalAuth (Keycloak + Local PostgreSQL)
+# Run: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+# Access Keycloak Console: http://localhost:8081/admin
+# ═══════════════════════════════════════════════════════════════════════════════
+services:
+  keycloak:
+    command:
+      - start-dev
+      - --import-realm
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    environment:
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${KC_DB_URL_DATABASE:-keycloak_db}
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    networks:
+      - rasa-local-sso-net
+
+  keycloak-db:
+    image: postgres:16-alpine
+    container_name: rasa-keycloak-local-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${KC_DB_URL_DATABASE:-keycloak_db}
+      POSTGRES_USER: ${KC_DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:-ChangeMeDbPassword123!}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - rasa-local-sso-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KC_DB_USERNAME:-postgres} -d ${KC_DB_URL_DATABASE:-keycloak_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  rasa-local-sso-net:
+    name: rasa-local-sso-net
+  rasa-shared-net:
+    external: false

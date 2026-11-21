@@ -1,0 +1,376 @@
+{
+  "id": "rasa",
+  "realm": "rasa",
+  "displayName": "Rasa Group SSO",
+  "displayNameHtml": "<div class=\"kc-logo-text\"><span>RASA KOPI</span></div>",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": true,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 10,
+  "loginTheme": "rasa-kopi",
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "de",
+    "en",
+    "id"
+  ],
+  "defaultLocale": "en",
+  "accessTokenLifespan": 3600,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 86400,
+  "ssoSessionMaxLifespan": 604800,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 5184000,
+  "roles": {
+    "realm": [
+      {
+        "name": "super-admin",
+        "description": "Rasa Group Super Administrator"
+      },
+      {
+        "name": "admin",
+        "description": "Rasa Company/Outlet Administrator"
+      },
+      {
+        "name": "cashier",
+        "description": "POS Cashier Staff"
+      },
+      {
+        "name": "kitchen",
+        "description": "Kitchen Staff"
+      },
+      {
+        "name": "barista",
+        "description": "Barista Staff"
+      },
+      {
+        "name": "b2b_customer",
+        "description": "Wholesale / B2B Customer (Net Price & EU Reverse Charge VAT in WooCommerce)"
+      },
+      {
+        "name": "customer",
+        "description": "Standard Retail B2C Customer"
+      },
+      {
+        "name": "user",
+        "description": "Default Rasa Account User"
+      }
+    ]
+  },
+  "defaultRoles": [
+    "user",
+    "customer"
+  ],
+  "clients": [
+    {
+      "clientId": "rasa-api",
+      "name": "Rasa Core API (digitalApi)",
+      "description": "Central Backend API & Single Source of Truth Synchronizer",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${env.KEYCLOAK_API_CLIENT_SECRET}",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "https://api-dev.rasagroup.global/*",
+        "https://api-qa.rasagroup.global/*",
+        "https://api-staging.rasagroup.global/*",
+        "https://api.rasagroup.global/*",
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocolMappers": [
+        {
+          "name": "rasa_uuid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "rasa_uuid",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "rasa_uuid",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "phone",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "phone",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "phone",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "company_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "company_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "company_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "b2b_vat_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "b2b_vat_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "b2b_vat_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rasa-cms",
+      "name": "Rasa Digital CMS & POS Portal",
+      "description": "Admin, Cashier, and Kitchen Web Application (digitalCms)",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${env.KEYCLOAK_CMS_CLIENT_SECRET}",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "rootUrl": "https://cms-dev.rasagroup.global",
+      "baseUrl": "/",
+      "redirectUris": [
+        "https://cms-dev.rasagroup.global/*",
+        "https://cms-dev1.rasagroup.global/*",
+        "https://cms-dev2.rasagroup.global/*",
+        "https://cms-qa.rasagroup.global/*",
+        "https://cms-staging.rasagroup.global/*",
+        "https://cms.rasagroup.global/*",
+        "http://localhost:8000/*",
+        "http://localhost:8001/*",
+        "http://127.0.0.1:8000/*",
+        "http://127.0.0.1:8001/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocolMappers": [
+        {
+          "name": "rasa_uuid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "rasa_uuid",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "rasa_uuid",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "company_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "company_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "company_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rasa-commerce",
+      "name": "Rasa Kopi WooCommerce Storefront (digitalCommerce)",
+      "description": "WooCommerce B2C & B2B Storefront (shop-dev.rasakopi.coffee / shop.rasakopi.coffee)",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${env.KEYCLOAK_COMMERCE_CLIENT_SECRET}",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "rootUrl": "https://shop-dev.rasakopi.coffee",
+      "baseUrl": "/my-account/",
+      "redirectUris": [
+        "https://shop-dev.rasakopi.coffee/*",
+        "https://shop.rasakopi.coffee/*",
+        "https://rasakopi.coffee/*",
+        "http://localhost:8080/*",
+        "http://127.0.0.1:8080/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocolMappers": [
+        {
+          "name": "rasa_uuid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "rasa_uuid",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "rasa_uuid",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "phone",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "phone",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "phone",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "b2b_vat_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "b2b_vat_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "b2b_vat_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "realm-roles-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rasa-mobile",
+      "name": "Rasa Kopi Mobile App",
+      "description": "Mobile Application OAuth2 PKCE Client",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "com.rasakopi.app:/oauthredirect*",
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "+"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-rasa-api",
+      "enabled": true,
+      "serviceAccountClientId": "rasa-api",
+      "realmRoles": [
+        "super-admin"
+      ],
+      "clientRoles": {
+        "realm-management": [
+          "realm-admin",
+          "manage-users",
+          "view-users",
+          "query-users",
+          "manage-realm",
+          "view-realm"
+        ]
+      }
+    }
+  ]
+}

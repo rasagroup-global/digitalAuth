@@ -1,0 +1,102 @@
+/* ==========================================================================
+   Rasa Kopi Centralized SSO Theme (Keycloak v2 Override)
+   Palette: Deep Espresso Black (#0c0c0c) + Rose Gold (#edc0ae) + Warm Cream (#faf7f5)
+   ========================================================================== */
+
+:root {
+  --pf-v5-global--primary-color--100: #121212;
+  --pf-v5-global--primary-color--200: #000000;
+  --pf-v5-global--link--Color: #8b5a44;
+  --pf-v5-global--link--Color--hover: #121212;
+  --rasa-black: #121212;
+  --rasa-rose-gold: #edc0ae;
+  --rasa-rose-gold-dark: #c9937e;
+  --rasa-bg: #f8f5f2;
+}
+
+body.kcBodyClass,
+.login-pf body {
+  background: radial-gradient(circle at top, #1f1917 0%, #0d0b0a 100%) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #121212;
+}
+
+#kc-header-wrapper {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--rasa-rose-gold) !important;
+  padding: 2rem 0 1.25rem;
+  text-align: center;
+}
+
+.kc-logo-text span {
+  display: inline-block;
+  border: 1px solid rgba(237, 192, 174, 0.45);
+  padding: 0.55rem 1.5rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--rasa-rose-gold);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.card-pf,
+.pf-v5-c-login__main {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border-top: 4px solid var(--rasa-rose-gold) !important;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45) !important;
+  padding: 2.25rem !important;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+#kc-page-title {
+  font-weight: 700;
+  font-size: 1.35rem;
+  color: #121212;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+#kc-form-login input[type="text"],
+#kc-form-login input[type="password"],
+#kc-register-form input[type="text"],
+#kc-register-form input[type="password"],
+.pf-v5-c-form-control {
+  border-radius: 8px !important;
+  border: 1px solid #d6d0cc !important;
+  padding: 0.65rem 0.85rem !important;
+  font-size: 0.95rem !important;
+}
+
+#kc-form-login input:focus,
+#kc-register-form input:focus {
+  border-color: #121212 !important;
+  box-shadow: 0 0 0 2px rgba(237, 192, 174, 0.45) !important;
+  outline: none !important;
+}
+
+#kc-login,
+input.pf-v5-c-button.pf-m-primary,
+button.pf-v5-c-button.pf-m-primary {
+  background-color: #121212 !important;
+  color: var(--rasa-rose-gold) !important;
+  border: 1px solid #121212 !important;
+  border-radius: 8px !important;
+  padding: 0.75rem 1.25rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer;
+}
+
+#kc-login:hover,
+input.pf-v5-c-button.pf-m-primary:hover,
+button.pf-v5-c-button.pf-m-primary:hover {
+  background-color: #26201e !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(18, 18, 18, 0.25) !important;
+}

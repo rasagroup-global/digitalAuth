@@ -1,0 +1,46 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Rasa Centralized SSO Service (Keycloak 26) — Production / VPS Docker Compose
+# Joins external `rasa-shared-net` behind `rasa-shared-proxy`
+# ═══════════════════════════════════════════════════════════════════════════════
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:${DOCKER_TAG:-26.0}
+    container_name: ${PROJECT_NAME:-sso-dev}-app
+    restart: always
+    command:
+      - start
+      - --import-realm
+      - --optimized
+    env_file: .env
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://${KC_DB_URL_HOST:-api-shared-db}:${KC_DB_URL_PORT:-5432}/${KC_DB_URL_DATABASE:-keycloak_db}
+      KC_DB_USERNAME: ${KC_DB_USERNAME}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_HOSTNAME: ${KC_HOSTNAME}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET}
+      KEYCLOAK_CMS_CLIENT_SECRET: ${KEYCLOAK_CMS_CLIENT_SECRET}
+      KEYCLOAK_COMMERCE_CLIENT_SECRET: ${KEYCLOAK_COMMERCE_CLIENT_SECRET}
+      JAVA_OPTS_APPEND: ${JAVA_OPTS_APPEND:--Xms256m -Xmx640m}
+    volumes:
+      - ./realms:/opt/keycloak/data/import:ro
+      - ./themes/rasa-kopi:/opt/keycloak/themes/rasa-kopi:ro
+    networks:
+      - rasa-shared-net
+    mem_limit: 896m
+    memswap_limit: 896m
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000; echo -e 'GET /health/ready HTTP/1.1\\r\\nhost: 127.0.0.1:9000\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  rasa-shared-net:
+    external: true
