@@ -45,7 +45,7 @@ jobs:
 
             mkdir -p /var/www/RASA/AUTH
 
-            # 0. Sync repository langsung via Git di VPS (tanpa butuh scp-action)
+            # 0. Sync repository langsung via Git di VPS
             if [ -d "$TARGET_DIR/.git" ]; then
                 cd $TARGET_DIR
                 git fetch origin $BRANCH
@@ -104,38 +104,81 @@ jobs:
             # 3. Jalankan container Keycloak
             docker compose --project-name $PROJECT_NAME up -d --force-recreate
 
-            # 4. Request SSL Certbot jika belum ada
-            if [ ! -d "/var/www/RASA/INFRA/certbot/conf/live/$DOMAIN" ]; then
+            # 4. Deteksi otomatis path mount ACME Challenge pada container rasa-shared-proxy
+            ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
+            ACME_CONTAINER_DIR="/var/lib/letsencrypt"
+
+            if [ -z "$ACME_HOST_DIR" ]; then
+              ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/www/certbot"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
+              if [ -n "$ACME_HOST_DIR" ]; then
+                ACME_CONTAINER_DIR="/var/www/certbot"
+              fi
+            fi
+
+            if [ -z "$ACME_HOST_DIR" ]; then
+              ACME_HOST_DIR="/var/www/RASA/INFRA/certbot/www"
+              ACME_CONTAINER_DIR="/var/lib/letsencrypt"
+            fi
+
+            CERT_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
+            if [ -z "$CERT_HOST_DIR" ]; then
+              CERT_HOST_DIR="/var/www/RASA/INFRA/certbot/conf"
+            fi
+
+            mkdir -p "$ACME_HOST_DIR/.well-known/acme-challenge"
+            chmod -R 755 "$ACME_HOST_DIR"
+
+            # 5. Request SSL Certbot jika belum ada
+            if [ ! -f "$CERT_HOST_DIR/live/$DOMAIN/fullchain.pem" ]; then
               echo "server {" > $PROXY_CONF
               echo "    listen 80;" >> $PROXY_CONF
               echo "    server_name $DOMAIN;" >> $PROXY_CONF
-              echo "    location /.well-known/acme-challenge/ { root /var/lib/letsencrypt; }" >> $PROXY_CONF
+              echo "    location ^~ /.well-known/acme-challenge/ {" >> $PROXY_CONF
+              echo "        default_type \"text/plain\";" >> $PROXY_CONF
+              echo "        root $ACME_CONTAINER_DIR;" >> $PROXY_CONF
+              echo "    }" >> $PROXY_CONF
               echo "    location / { return 301 https://\$host\$request_uri; }" >> $PROXY_CONF
               echo "}" >> $PROXY_CONF
 
-              docker exec rasa-shared-proxy nginx -s reload
+              docker exec rasa-shared-proxy nginx -t && docker exec rasa-shared-proxy nginx -s reload
+              sleep 2
 
               docker run --rm \
-                -v "/var/www/RASA/INFRA/certbot/conf:/etc/letsencrypt" \
-                -v "/var/www/RASA/INFRA/certbot/www:/var/lib/letsencrypt" \
+                -v "$CERT_HOST_DIR:/etc/letsencrypt" \
+                -v "$ACME_HOST_DIR:$ACME_CONTAINER_DIR" \
                 certbot/certbot certonly --webroot \
-                --webroot-path=/var/lib/letsencrypt \
+                --webroot-path=$ACME_CONTAINER_DIR \
                 --email admin@rasagroup.global --agree-tos --no-eff-email \
-                -d $DOMAIN
+                -d $DOMAIN || true
             fi
 
-            # 5. Update Nginx Proxy ke HTTPS Reverse Proxy Keycloak
+            # Fallback ke Wildcard / Existing Certificate jika masih belum terbit (misal rate-limit / mount custom)
+            SSL_CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+            SSL_KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+            if [ ! -f "$CERT_HOST_DIR/live/$DOMAIN/fullchain.pem" ]; then
+              FALLBACK_DOMAIN=$(ls -1 "$CERT_HOST_DIR/live" 2>/dev/null | grep -v "README" | head -n 1 || echo "")
+              if [ -n "$FALLBACK_DOMAIN" ]; then
+                echo "WARNING: Cert for $DOMAIN not found, falling back to $FALLBACK_DOMAIN cert temporarily"
+                SSL_CERT="/etc/letsencrypt/live/$FALLBACK_DOMAIN/fullchain.pem"
+                SSL_KEY="/etc/letsencrypt/live/$FALLBACK_DOMAIN/privkey.pem"
+              fi
+            fi
+
+            # 6. Update Nginx Proxy ke HTTPS Reverse Proxy Keycloak
             echo "server {" > $PROXY_CONF
             echo "    listen 80;" >> $PROXY_CONF
             echo "    server_name $DOMAIN;" >> $PROXY_CONF
-            echo "    location /.well-known/acme-challenge/ { root /var/lib/letsencrypt; }" >> $PROXY_CONF
+            echo "    location ^~ /.well-known/acme-challenge/ {" >> $PROXY_CONF
+            echo "        default_type \"text/plain\";" >> $PROXY_CONF
+            echo "        root $ACME_CONTAINER_DIR;" >> $PROXY_CONF
+            echo "    }" >> $PROXY_CONF
             echo "    location / { return 301 https://\$host\$request_uri; }" >> $PROXY_CONF
             echo "}" >> $PROXY_CONF
             echo "server {" >> $PROXY_CONF
             echo "    listen 443 ssl;" >> $PROXY_CONF
             echo "    server_name $DOMAIN;" >> $PROXY_CONF
-            echo "    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;" >> $PROXY_CONF
-            echo "    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;" >> $PROXY_CONF
+            echo "    ssl_certificate $SSL_CERT;" >> $PROXY_CONF
+            echo "    ssl_certificate_key $SSL_KEY;" >> $PROXY_CONF
             echo "    include /etc/nginx/conf.d/proxy_params;" >> $PROXY_CONF
             echo "    client_max_body_size 20M;" >> $PROXY_CONF
             echo "    proxy_buffer_size 128k;" >> $PROXY_CONF
@@ -155,5 +198,5 @@ jobs:
             echo "    }" >> $PROXY_CONF
             echo "}" >> $PROXY_CONF
 
-            docker exec rasa-shared-proxy nginx -s reload
+            docker exec rasa-shared-proxy nginx -t && docker exec rasa-shared-proxy nginx -s reload
             echo "Deployment Rasa SSO ($DOMAIN) selesai!"
