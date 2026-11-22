@@ -111,14 +111,15 @@ jobs:
             docker logs --tail 40 $CONTAINER_NAME || true
 
             # 3.5 Pastikan user Admin Master selalu tersedia & password sesuai (meskipun DB sempat terinisialisasi dengan env ber-spasi di run pertama)
-            DB_ID=$(docker exec -i api-shared-db psql -U "$DB_USER" -d "$KC_DB_NAME" -tAc "SELECT count(*) FROM user_entity WHERE username='$KC_ADMIN_USER' AND realm_id=(SELECT id FROM realm WHERE name='master')" 2>/dev/null || echo "0")
-            if [ "$DB_ID" = "0" ]; then
-              echo "==> User admin master belum ada di DB (efek run pertama). Me-reset schema $KC_DB_NAME agar bootstrap admin & realm ter-import bersih..."
+            ADMIN_CRED_COUNT=$(docker exec -i api-shared-db psql -U "$DB_USER" -d "$KC_DB_NAME" -tAc "SELECT count(*) FROM credential c JOIN user_entity u ON c.user_id = u.id JOIN realm r ON u.realm_id = r.id WHERE r.name = 'master' AND u.username = '$KC_ADMIN_USER' AND c.type = 'password'" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$ADMIN_CRED_COUNT" = "0" ] || [ -z "$ADMIN_CRED_COUNT" ]; then
+              echo "==> User admin master atau credential password belum ada di DB (count=$ADMIN_CRED_COUNT). Me-reset schema $KC_DB_NAME agar bootstrap admin & realm ter-import bersih..."
               docker stop $CONTAINER_NAME || true
+              docker exec -i api-shared-db psql -U "$DB_USER" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$KC_DB_NAME' AND pid <> pg_backend_pid();" || true
               docker exec -i api-shared-db psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"$KC_DB_NAME\";"
               docker exec -i api-shared-db psql -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$KC_DB_NAME\" OWNER \"$DB_USER\";"
-              docker start $CONTAINER_NAME
-              sleep 10
+              docker compose --project-name $PROJECT_NAME up -d --force-recreate
+              sleep 15
             fi
 
             # 4. Deteksi otomatis path mount ACME Challenge pada container rasa-shared-proxy
