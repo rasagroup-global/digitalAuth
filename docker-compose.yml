@@ -6,7 +6,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:${DOCKER_TAG:-26.0}
     container_name: ${PROJECT_NAME:-sso-dev}-app
-    restart: always
+    restart: unless-stopped
     command:
       - start
       - --import-realm

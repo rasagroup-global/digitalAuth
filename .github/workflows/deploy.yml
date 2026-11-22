@@ -204,8 +204,8 @@ jobs:
             echo "    proxy_busy_buffers_size 256k;" >> $PROXY_CONF
             echo "    large_client_header_buffers 4 32k;" >> $PROXY_CONF
             echo "    location / {" >> $PROXY_CONF
-            echo "        set $backend http://$CONTAINER_NAME:8080;" >> $PROXY_CONF
-            echo "        proxy_pass $backend;" >> $PROXY_CONF
+            echo "        set \$backend http://$CONTAINER_NAME:8080;" >> $PROXY_CONF
+            echo "        proxy_pass \$backend;" >> $PROXY_CONF
             echo "        proxy_http_version 1.1;" >> $PROXY_CONF
             echo "        proxy_set_header Host \$host;" >> $PROXY_CONF
             echo "        proxy_set_header X-Real-IP \$remote_addr;" >> $PROXY_CONF
