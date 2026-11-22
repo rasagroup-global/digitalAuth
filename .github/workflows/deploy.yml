@@ -122,10 +122,16 @@ jobs:
               sleep 15
             fi
 
-            # 3.6 Pastikan service-account-rasa-api memiliki role realm-management (manage-users, view-users, query-users, manage-realm)
+            # 3.6 Pastikan client secrets (rasa-api, rasa-cms, rasa-commerce) & service-account-rasa-api roles tersinkronisasi di Keycloak
             for i in $(seq 1 15); do
               if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASS" >/dev/null 2>&1; then
-                echo "==> Ensuring service-account-rasa-api has realm-management admin roles in realm 'rasa'..."
+                echo "==> Syncing client secrets and service-account-rasa-api roles in realm 'rasa'..."
+                API_CID=$(docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get clients -r rasa -q clientId=rasa-api --fields id --format csv --noquotes 2>/dev/null | tr -d '[:space:]')
+                CMS_CID=$(docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get clients -r rasa -q clientId=rasa-cms --fields id --format csv --noquotes 2>/dev/null | tr -d '[:space:]')
+                COM_CID=$(docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get clients -r rasa -q clientId=rasa-commerce --fields id --format csv --noquotes 2>/dev/null | tr -d '[:space:]')
+                [ -n "$API_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$API_CID" -r rasa -s "secret=$API_SECRET" -s "serviceAccountsEnabled=true" -s "directAccessGrantsEnabled=true" >/dev/null 2>&1 || true
+                [ -n "$CMS_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$CMS_CID" -r rasa -s "secret=$CMS_SECRET" >/dev/null 2>&1 || true
+                [ -n "$COM_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$COM_CID" -r rasa -s "secret=$COMMERCE_SECRET" >/dev/null 2>&1 || true
                 docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh add-roles -r rasa --uusername service-account-rasa-api --cclientid realm-management --rolename realm-admin --rolename manage-users --rolename view-users --rolename query-users --rolename manage-realm --rolename view-realm >/dev/null 2>&1 || true
                 break
               fi
