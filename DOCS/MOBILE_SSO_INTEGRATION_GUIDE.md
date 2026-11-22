@@ -12,18 +12,20 @@
 
 Mulai versi SSO terpusat (`digitalAuth`), aplikasi mobile **`digitalApk`** dapat melakukan autentikasi menggunakan **Rasa SSO (Keycloak)** dengan jaminan **100% Single Source of Truth** ke `RasaApi` (`digitalApi`).
 
-Terdapat **2 Opsi Alur Integrasi** yang didukung penuh oleh `sso-dev` dan `api-dev`:
+Terdapat **3 Skema Integrasi** yang didukung penuh oleh `sso-dev` dan `api-dev` (termasuk **Skema Muhajir / Nafi** yang sudah dipakai oleh tim mobile):
 
-1. **Opsi A (Recommended — OIDC Browser / Custom Tabs + PKCE Exchange via `RasaApi`)**:
-   - Mobile App membuka halaman login SSO (`sso-dev.rasagroup.global`) menggunakan **Chrome Custom Tabs / ASWebAuthenticationSession** (misal via `flutter_appauth` / `expo-auth-session` / `react-native-app-auth` / deep link browser).
+1. **Skema 1 (Standar Muhajir / Nafi — `POST /api/v1/auth/login` & `GET /api/v1/auth/callback`)**:
+   - **Native Login (`POST /api/v1/auth/login`)**: Mobile App mengirim `email` & `password` (opsional `keycloak: 1`, `remember: 1`). Backend `RasaApi` otomatis mengecek user ke Keycloak (`getUserInfo`), memvalidasi password ke Keycloak (`validateUserCredentials`), melakukan auto-mirror user dari Keycloak ke DB lokal jika belum ada, menyimpan `keycloak_id` di `tm_user_metas`, dan mengembalikan JWT token `RasaApi` beserta kode error terstruktur **`LoginError`** (`errors.code: ["ACCOUNT_NOT_FOUND" | "INVALID_CREDENTIALS" | "ACCOUNT_INACTIVE" | "EMAIL_NOT_VERIFIED" | "ACCOUNT_DISABLED" | "ACCOUNT_SETUP_REQUIRED"]`).
+   - **OIDC Callback (`GET /api/v1/auth/callback?code=...&is_app=1`)**: Setelah login OIDC via browser/Google/Keycloak, mengirim `code` ke `/api/v1/auth/callback`. Jika `is_app=1`, otomatis me-redirect ke deep link `com.rasakopi.app:/oauthredirect?at=<JWT_TOKEN>`, atau jika tanpa `is_app=1` mengembalikan JSON `respondWithToken`.
+
+2. **Skema 2 (OIDC Browser / Custom Tabs + PKCE Exchange via `POST /api/v1/auth/keycloak/exchange`)**:
+   - Mobile App membuka halaman login SSO (`sso-dev.rasagroup.global`) menggunakan **Chrome Custom Tabs / ASWebAuthenticationSession**.
    - Setelah user login di SSO, Keycloak me-redirect kembali ke deep link aplikasi:
      `com.rasakopi.app:/oauthredirect?code=...&state=...`
-   - Mobile App mengirim `code` + `code_verifier` ke endpoint **`POST https://api-dev.rasagroup.global/api/v1/auth/keycloak/exchange`**.
-   - `RasaApi` memverifikasi token, menyinkronkan `keycloak_id` di `tm_user_metas`, dan mengembalikan **`access_token` (`RasaApi` JWT)** + **`keycloak_access_token`** + **`keycloak_refresh_token`** + **profil lengkap `user`** (beserta wallet, loyalty level, dan poin).
+   - Mobile App mengirim `code` + `code_verifier` (atau `access_token`) ke endpoint **`POST https://api-dev.rasagroup.global/api/v1/auth/keycloak/exchange`**.
 
-2. **Opsi B (Hybrid / Native Login Screen Tetap Jalan)**:
-   - Selama masa transisi atau jika aplikasi mobile masih memakai UI Login/Register/OTP bawaan (`POST /api/v1/auth/login`, `/auth/register`, `/auth/verify-otp`, `/auth/login/social`), **semua endpoint lama tetap berfungsi 100% tanpa perubahan payload** dan secara otomatis menyinkronkan user ke Keycloak di belakang layar!
-   - Bahkan, `RasaApi` kini mendukung **Dual-Token Verification**: semua endpoint `Authorization: Bearer <token>` di `RasaApi` menerima **token JWT dari `RasaApi` (HS256)** *maupun* **`access_token` langsung dari Keycloak (RS256)**.
+3. **Skema 3 (Dual-Token Verification)**:
+   - Semua endpoint `Authorization: Bearer <token>` di `RasaApi` menerima **token JWT dari `RasaApi` (HS256)** *maupun* **`access_token` langsung dari Keycloak (RS256)**.
 
 ---
 
