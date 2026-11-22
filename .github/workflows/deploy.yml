@@ -122,6 +122,16 @@ jobs:
               sleep 15
             fi
 
+            # 3.6 Pastikan service-account-rasa-api memiliki role realm-management (manage-users, view-users, query-users, manage-realm)
+            for i in $(seq 1 15); do
+              if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASS" >/dev/null 2>&1; then
+                echo "==> Ensuring service-account-rasa-api has realm-management admin roles in realm 'rasa'..."
+                docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh add-roles -r rasa --uusername service-account-rasa-api --cclientid realm-management --rolename realm-admin --rolename manage-users --rolename view-users --rolename query-users --rolename manage-realm --rolename view-realm >/dev/null 2>&1 || true
+                break
+              fi
+              sleep 3
+            done
+
             # 4. Deteksi otomatis path mount ACME Challenge pada container rasa-shared-proxy
             ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
             ACME_CONTAINER_DIR="/var/lib/letsencrypt"
