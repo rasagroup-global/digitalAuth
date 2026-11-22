@@ -82,6 +82,8 @@ jobs:
 
             echo "PROJECT_NAME=$PROJECT_NAME" > .env
             echo "DOCKER_TAG=26.0" >> .env
+            echo "KEYCLOAK_ADMIN=$KC_ADMIN_USER" >> .env
+            echo "KEYCLOAK_ADMIN_PASSWORD=$KC_ADMIN_PASS" >> .env
             echo "KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER" >> .env
             echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS" >> .env
             echo "KC_HOSTNAME=https://$DOMAIN" >> .env
@@ -107,6 +109,15 @@ jobs:
             echo "==> Status & Log Awal Container $CONTAINER_NAME:"
             docker ps -a --filter "name=$CONTAINER_NAME"
             docker logs --tail 40 $CONTAINER_NAME || true
+
+            # 3.5 Pastikan user Admin Master selalu tersinkronisasi (meskipun realm master sudah terbuat di run sebelumnya)
+            for i in $(seq 1 15); do
+              if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASS" >/dev/null 2>&1; then
+                echo "==> Admin credentials verified!"
+                break
+              fi
+              sleep 3
+            done
 
             # 4. Deteksi otomatis path mount ACME Challenge pada container rasa-shared-proxy
             ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
