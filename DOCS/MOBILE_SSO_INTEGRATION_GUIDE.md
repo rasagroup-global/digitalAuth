@@ -140,6 +140,15 @@ https://sso-dev.rasagroup.global/realms/rasa/protocol/openid-connect/auth
   &code_challenge_method=S256
 ```
 
+#### Direct "Continue with Google" via Keycloak (`kc_idp_hint=google`)
+Jika di halaman login aplikasi mobile (`digitalApk`) terdapat tombol khusus **"Sign in with Google"** dan Anda ingin user langsung diarahkan ke layar pemilihan akun Google (melewati tampilan form email/password Keycloak), cukup tambahkan parameter **`&kc_idp_hint=google`** pada URL Authorization di atas:
+
+```text
+https://sso-dev.rasagroup.global/realms/rasa/protocol/openid-connect/auth?client_id=rasa-mobile&redirect_uri=com.rasakopi.app%3A%2Foauthredirect&response_type=code&scope=openid%20email%20profile&kc_idp_hint=google&state=<RANDOM_STATE>&code_challenge=<BASE64URL_SHA256_CHALLENGE>&code_challenge_method=S256
+```
+*(Jika menggunakan `flutter_appauth` atau `react-native-app-auth`, cukup tambahkan `additionalParameters: {'kc_idp_hint': 'google'}`)*.
+Setelah user memilih akun Google, Keycloak akan tetap me-redirect kembali ke deep link `com.rasakopi.app:/oauthredirect?code=...` dengan alur pertukaran token yang 100% sama.
+
 ---
 
 ### Langkah 3: Tangkap Callback & Tukar Token ke `RasaApi`

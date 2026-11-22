@@ -80,6 +80,11 @@ jobs:
             COMMERCE_SECRET="${{ secrets.KEYCLOAK_COMMERCE_CLIENT_SECRET }}"
             [ -z "$COMMERCE_SECRET" ] && COMMERCE_SECRET="rasa-commerce-secret-dev-2026"
 
+            G_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
+            G_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
+            FB_CLIENT_ID="${{ secrets.FACEBOOK_CLIENT_ID }}"
+            FB_CLIENT_SECRET="${{ secrets.FACEBOOK_CLIENT_SECRET }}"
+
             echo "PROJECT_NAME=$PROJECT_NAME" > .env
             echo "DOCKER_TAG=26.0" >> .env
             echo "KEYCLOAK_ADMIN=$KC_ADMIN_USER" >> .env
@@ -101,6 +106,10 @@ jobs:
             echo "KEYCLOAK_API_CLIENT_SECRET=$API_SECRET" >> .env
             echo "KEYCLOAK_CMS_CLIENT_SECRET=$CMS_SECRET" >> .env
             echo "KEYCLOAK_COMMERCE_CLIENT_SECRET=$COMMERCE_SECRET" >> .env
+            echo "GOOGLE_CLIENT_ID=$G_CLIENT_ID" >> .env
+            echo "GOOGLE_CLIENT_SECRET=$G_CLIENT_SECRET" >> .env
+            echo "FACEBOOK_CLIENT_ID=$FB_CLIENT_ID" >> .env
+            echo "FACEBOOK_CLIENT_SECRET=$FB_CLIENT_SECRET" >> .env
             echo "JAVA_OPTS_APPEND=-Xms256m -Xmx640m" >> .env
 
             # 3. Jalankan container Keycloak
@@ -132,7 +141,60 @@ jobs:
                 [ -n "$API_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$API_CID" -r rasa -s "secret=$API_SECRET" -s "serviceAccountsEnabled=true" -s "directAccessGrantsEnabled=true" >/dev/null 2>&1 || true
                 [ -n "$CMS_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$CMS_CID" -r rasa -s "secret=$CMS_SECRET" >/dev/null 2>&1 || true
                 [ -n "$COM_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$COM_CID" -r rasa -s "secret=$COMMERCE_SECRET" >/dev/null 2>&1 || true
+                docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update realms/rasa -s 'displayName=Rasa Account' >/dev/null 2>&1 || true
                 docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh add-roles -r rasa --uusername service-account-rasa-api --cclientid realm-management --rolename realm-admin --rolename manage-users --rolename view-users --rolename query-users --rolename manage-realm --rolename view-realm >/dev/null 2>&1 || true
+
+                # Provision / Update Google & Facebook Identity Providers otomatis
+                [ -z "$G_CLIENT_ID" ] && G_CLIENT_ID="configure-google-client-id-in-github-secrets.apps.googleusercontent.com"
+                [ -z "$G_CLIENT_SECRET" ] && G_CLIENT_SECRET="configure-google-client-secret-in-github-secrets"
+                [ -z "$FB_CLIENT_ID" ] && FB_CLIENT_ID="configure-facebook-app-id-in-github-secrets"
+                [ -z "$FB_CLIENT_SECRET" ] && FB_CLIENT_SECRET="configure-facebook-app-secret-in-github-secrets"
+                echo "==> Configuring Google & Facebook Identity Providers in realm 'rasa'..."
+                if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google -r rasa >/dev/null 2>&1; then
+                  docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update identity-provider/instances/google -r rasa \
+                    -s enabled=true \
+                    -s trustEmail=true \
+                    -s displayName="Google" \
+                    -s "config.clientId=$G_CLIENT_ID" \
+                    -s "config.clientSecret=$G_CLIENT_SECRET" \
+                    -s "config.defaultScope=openid profile email" \
+                    -s "config.syncMode=IMPORT" >/dev/null 2>&1 || true
+                else
+                  docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh create identity-provider/instances -r rasa \
+                    -s alias=google \
+                    -s providerId=google \
+                    -s displayName="Google" \
+                    -s enabled=true \
+                    -s trustEmail=true \
+                    -s firstBrokerLoginFlowAlias="first broker login" \
+                    -s "config.clientId=$G_CLIENT_ID" \
+                    -s "config.clientSecret=$G_CLIENT_SECRET" \
+                    -s "config.defaultScope=openid profile email" \
+                    -s "config.syncMode=IMPORT" >/dev/null 2>&1 || true
+                fi
+
+                if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get identity-provider/instances/facebook -r rasa >/dev/null 2>&1; then
+                  docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update identity-provider/instances/facebook -r rasa \
+                    -s enabled=true \
+                    -s trustEmail=true \
+                    -s displayName="Facebook" \
+                    -s "config.clientId=$FB_CLIENT_ID" \
+                    -s "config.clientSecret=$FB_CLIENT_SECRET" \
+                    -s "config.defaultScope=email public_profile" \
+                    -s "config.syncMode=IMPORT" >/dev/null 2>&1 || true
+                else
+                  docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh create identity-provider/instances -r rasa \
+                    -s alias=facebook \
+                    -s providerId=facebook \
+                    -s displayName="Facebook" \
+                    -s enabled=true \
+                    -s trustEmail=true \
+                    -s firstBrokerLoginFlowAlias="first broker login" \
+                    -s "config.clientId=$FB_CLIENT_ID" \
+                    -s "config.clientSecret=$FB_CLIENT_SECRET" \
+                    -s "config.defaultScope=email public_profile" \
+                    -s "config.syncMode=IMPORT" >/dev/null 2>&1 || true
+                fi
                 break
               fi
               sleep 3

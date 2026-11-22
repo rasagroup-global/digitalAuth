@@ -1,7 +1,7 @@
 {
   "id": "rasa",
   "realm": "rasa",
-  "displayName": "Rasa Group SSO",
+  "displayName": "Rasa Account",
   "displayNameHtml": "<div class=\"kc-logo-text\"><span>RASA KOPI</span></div>",
   "enabled": true,
   "sslRequired": "external",
@@ -351,6 +351,48 @@
       "webOrigins": [
         "+"
       ]
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": true,
+      "updateProfileFirstLoginMode": "on",
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${env.GOOGLE_CLIENT_ID}",
+        "clientSecret": "${env.GOOGLE_CLIENT_SECRET}",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT",
+        "guiOrder": "1"
+      }
+    },
+    {
+      "alias": "facebook",
+      "displayName": "Facebook",
+      "providerId": "facebook",
+      "enabled": true,
+      "updateProfileFirstLoginMode": "on",
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${env.FACEBOOK_CLIENT_ID}",
+        "clientSecret": "${env.FACEBOOK_CLIENT_SECRET}",
+        "defaultScope": "email public_profile",
+        "syncMode": "IMPORT",
+        "guiOrder": "2"
+      }
     }
   ],
   "users": [
