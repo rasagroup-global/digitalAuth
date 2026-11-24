@@ -4,7 +4,7 @@
  * - "Welcome to RASA" + "Login or Register your RASA account."
  * - Mode switcher: Phone (+49 / +62 / +43 / +41 / +31) or Email/Username
  * - Normalizes phone numbers on form submit so Keycloak matches user's phone username
- * - Circular Google & Facebook social login buttons + Legal footer
+ * - Circular Google social login button + Legal footer
  */
 (function () {
   function initRasaLoginUI() {

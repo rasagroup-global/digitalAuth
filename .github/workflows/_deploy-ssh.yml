@@ -1,0 +1,317 @@
+name: Reusable SSH Deployment (Rasa SSO / Keycloak 26)
+
+on:
+  workflow_call:
+    inputs:
+      target_env:
+        required: true
+        type: string
+    secrets:
+      DO_HOST:
+        required: true
+      DO_SSH_KEY:
+        required: false
+      DO_USERNAME:
+        required: false
+      DO_PASSWORD:
+        required: false
+      DB_USERNAME:
+        required: false
+      DB_PASSWORD:
+        required: false
+      KC_ADMIN_USERNAME:
+        required: false
+      KC_ADMIN_PASSWORD:
+        required: false
+      KEYCLOAK_API_CLIENT_SECRET:
+        required: false
+      KEYCLOAK_CMS_CLIENT_SECRET:
+        required: false
+      KEYCLOAK_COMMERCE_CLIENT_SECRET:
+        required: false
+      GOOGLE_CLIENT_ID:
+        required: false
+      GOOGLE_CLIENT_SECRET:
+        required: false
+
+jobs:
+  deploy-ssh:
+    name: Deploy Keycloak (${{ inputs.target_env }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Target Server Secrets
+        env:
+          CHECK_HOST: ${{ secrets.DO_HOST }}
+          CHECK_KEY: ${{ secrets.DO_SSH_KEY }}
+          CHECK_PASS: ${{ secrets.DO_PASSWORD }}
+        run: |
+          if [ -z "$CHECK_HOST" ]; then
+            echo "::error::Missing target host secret for ${{ inputs.target_env }} (PROD_DO_HOST for main/master, DO_HOST for qa/dev)."
+            exit 1
+          fi
+          if [ -z "$CHECK_KEY" ] && [ -z "$CHECK_PASS" ]; then
+            echo "::error::Missing SSH credential for ${{ inputs.target_env }} (set DO_SSH_KEY or DO_PASSWORD / PROD_ equivalent)."
+            exit 1
+          fi
+
+      - name: Deploy Keycloak Container & Reverse Proxy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USERNAME || 'root' }}
+          password: ${{ secrets.DO_PASSWORD }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            set -e
+            BRANCH=${{ github.ref_name }}
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+
+            if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+                DOMAIN="sso.rasagroup.global"
+                KC_DB_NAME="keycloak_db_prod"
+                CONTAINER_NAME="sso-main-app"
+                PROJECT_NAME="sso-main"
+            elif [ "$BRANCH" = "staging" ] || [ "$BRANCH" = "qa" ]; then
+                DOMAIN="sso-$BRANCH.rasagroup.global"
+                KC_DB_NAME="keycloak_db_staging"
+                CONTAINER_NAME="sso-$BRANCH-app"
+                PROJECT_NAME="sso-$BRANCH"
+            else
+                DOMAIN="sso-dev.rasagroup.global"
+                KC_DB_NAME="keycloak_db_dev"
+                CONTAINER_NAME="sso-dev-app"
+                PROJECT_NAME="sso-dev"
+            fi
+
+            TARGET_DIR=/var/www/RASA/AUTH/$BRANCH
+            PROXY_CONF=/var/www/RASA/INFRA/conf.d/$PROJECT_NAME.conf
+
+            mkdir -p /var/www/RASA/AUTH
+
+            # 0. Sync repository langsung via Git di VPS
+            if [ -d "$TARGET_DIR/.git" ]; then
+                cd $TARGET_DIR
+                git fetch origin $BRANCH
+                git checkout $BRANCH || git checkout -b $BRANCH origin/$BRANCH
+                git reset --hard origin/$BRANCH
+            else
+                rm -rf $TARGET_DIR
+                git clone --branch $BRANCH $REPO_URL $TARGET_DIR
+                cd $TARGET_DIR
+            fi
+
+            # 1. Pastikan script menggunakan LF line-endings & database PostgreSQL untuk Keycloak tersedia di api-shared-db
+            sed -i 's/\r$//' scripts/*.sh || true
+            chmod +x scripts/*.sh || true
+            DB_USER="${{ secrets.DB_USERNAME }}"
+            [ -z "$DB_USER" ] && DB_USER="postgres"
+            bash scripts/init-keycloak-db.sh "$KC_DB_NAME" "$DB_USER"
+
+            # 2. Generate .env
+            KC_ADMIN_USER="${{ secrets.KC_ADMIN_USERNAME }}"
+            [ -z "$KC_ADMIN_USER" ] && KC_ADMIN_USER="admin"
+
+            KC_ADMIN_PASS="${{ secrets.KC_ADMIN_PASSWORD }}"
+            [ -z "$KC_ADMIN_PASS" ] && KC_ADMIN_PASS="RasaSsoAdmin2026!"
+
+            API_SECRET="${{ secrets.KEYCLOAK_API_CLIENT_SECRET }}"
+            [ -z "$API_SECRET" ] && API_SECRET="rasa-api-secret-dev-2026"
+
+            CMS_SECRET="${{ secrets.KEYCLOAK_CMS_CLIENT_SECRET }}"
+            [ -z "$CMS_SECRET" ] && CMS_SECRET="rasa-cms-secret-dev-2026"
+
+            COMMERCE_SECRET="${{ secrets.KEYCLOAK_COMMERCE_CLIENT_SECRET }}"
+            [ -z "$COMMERCE_SECRET" ] && COMMERCE_SECRET="rasa-commerce-secret-dev-2026"
+
+            G_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
+            G_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
+
+            echo "PROJECT_NAME=$PROJECT_NAME" > .env
+            echo "DOCKER_TAG=26.0" >> .env
+            echo "KEYCLOAK_ADMIN=$KC_ADMIN_USER" >> .env
+            echo "KEYCLOAK_ADMIN_PASSWORD=$KC_ADMIN_PASS" >> .env
+            echo "KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER" >> .env
+            echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS" >> .env
+            echo "KC_HOSTNAME=https://$DOMAIN" >> .env
+            echo "KC_HOSTNAME_STRICT=false" >> .env
+            echo "KC_HTTP_ENABLED=true" >> .env
+            echo "KC_PROXY_HEADERS=xforwarded" >> .env
+            echo "KC_HEALTH_ENABLED=true" >> .env
+            echo "KC_DB=postgres" >> .env
+            echo "KC_DB_URL_HOST=api-shared-db" >> .env
+            echo "KC_DB_URL_PORT=5432" >> .env
+            echo "KC_DB_URL_DATABASE=$KC_DB_NAME" >> .env
+            echo "KC_DB_USERNAME=$DB_USER" >> .env
+            echo "KC_DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "KEYCLOAK_REALM=rasa" >> .env
+            echo "KEYCLOAK_API_CLIENT_SECRET=$API_SECRET" >> .env
+            echo "KEYCLOAK_CMS_CLIENT_SECRET=$CMS_SECRET" >> .env
+            echo "KEYCLOAK_COMMERCE_CLIENT_SECRET=$COMMERCE_SECRET" >> .env
+            echo "GOOGLE_CLIENT_ID=$G_CLIENT_ID" >> .env
+            echo "GOOGLE_CLIENT_SECRET=$G_CLIENT_SECRET" >> .env
+            echo "JAVA_OPTS_APPEND=-Xms256m -Xmx640m" >> .env
+
+            # 3. Jalankan container Keycloak
+            docker compose --project-name $PROJECT_NAME up -d --force-recreate
+            sleep 5
+            echo "==> Status & Log Awal Container $CONTAINER_NAME:"
+            docker ps -a --filter "name=$CONTAINER_NAME"
+            docker logs --tail 40 $CONTAINER_NAME || true
+
+            # 3.5 Pastikan user Admin Master selalu tersedia & password sesuai
+            ADMIN_CRED_COUNT=$(docker exec -i api-shared-db psql -U "$DB_USER" -d "$KC_DB_NAME" -tAc "SELECT count(*) FROM credential c JOIN user_entity u ON c.user_id = u.id JOIN realm r ON u.realm_id = r.id WHERE r.name = 'master' AND u.username = '$KC_ADMIN_USER' AND c.type = 'password'" 2>/dev/null | tr -d '[:space:]' || echo "0")
+            if [ "$ADMIN_CRED_COUNT" = "0" ] || [ -z "$ADMIN_CRED_COUNT" ]; then
+              echo "==> User admin master atau credential password belum ada di DB (count=$ADMIN_CRED_COUNT). Me-reset schema $KC_DB_NAME agar bootstrap admin & realm ter-import bersih..."
+              docker stop $CONTAINER_NAME || true
+              docker exec -i api-shared-db psql -U "$DB_USER" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$KC_DB_NAME' AND pid <> pg_backend_pid();" || true
+              docker exec -i api-shared-db psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS \"$KC_DB_NAME\";"
+              docker exec -i api-shared-db psql -U "$DB_USER" -d postgres -c "CREATE DATABASE \"$KC_DB_NAME\" OWNER \"$DB_USER\";"
+              docker compose --project-name $PROJECT_NAME up -d --force-recreate
+              sleep 15
+            fi
+
+            # 3.6 Sinkronisasi client secrets, Google Identity Provider, & hapus Facebook IDP jika ada
+            for i in $(seq 1 15); do
+              if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASS" >/dev/null 2>&1; then
+                echo "==> Syncing client secrets and service-account-rasa-api roles in realm 'rasa'..."
+                API_CID=$(docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get clients -r rasa -q clientId=rasa-api --fields id --format csv --noquotes 2>/dev/null | tr -d '[:space:]')
+                CMS_CID=$(docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get clients -r rasa -q clientId=rasa-cms --fields id --format csv --noquotes 2>/dev/null | tr -d '[:space:]')
+                COM_CID=$(docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get clients -r rasa -q clientId=rasa-commerce --fields id --format csv --noquotes 2>/dev/null | tr -d '[:space:]')
+                [ -n "$API_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$API_CID" -r rasa -s "secret=$API_SECRET" -s "serviceAccountsEnabled=true" -s "directAccessGrantsEnabled=true" >/dev/null 2>&1 || true
+                [ -n "$CMS_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$CMS_CID" -r rasa -s "secret=$CMS_SECRET" >/dev/null 2>&1 || true
+                [ -n "$COM_CID" ] && docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update "clients/$COM_CID" -r rasa -s "secret=$COMMERCE_SECRET" >/dev/null 2>&1 || true
+                docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update realms/rasa -s 'displayName=Rasa Account' >/dev/null 2>&1 || true
+                docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh add-roles -r rasa --uusername service-account-rasa-api --cclientid realm-management --rolename realm-admin --rolename manage-users --rolename view-users --rolename query-users --rolename manage-realm --rolename view-realm >/dev/null 2>&1 || true
+
+                # Provision / Update Google Identity Provider otomatis
+                [ -z "$G_CLIENT_ID" ] && G_CLIENT_ID="configure-google-client-id-in-github-secrets.apps.googleusercontent.com"
+                [ -z "$G_CLIENT_SECRET" ] && G_CLIENT_SECRET="configure-google-client-secret-in-github-secrets"
+                echo "==> Configuring Google Identity Provider in realm 'rasa'..."
+                if docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh get identity-provider/instances/google -r rasa >/dev/null 2>&1; then
+                  docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh update identity-provider/instances/google -r rasa \
+                    -s enabled=true \
+                    -s trustEmail=true \
+                    -s displayName="Google" \
+                    -s "config.clientId=$G_CLIENT_ID" \
+                    -s "config.clientSecret=$G_CLIENT_SECRET" \
+                    -s "config.defaultScope=openid profile email" \
+                    -s "config.syncMode=IMPORT" >/dev/null 2>&1 || true
+                else
+                  docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh create identity-provider/instances -r rasa \
+                    -s alias=google \
+                    -s providerId=google \
+                    -s displayName="Google" \
+                    -s enabled=true \
+                    -s trustEmail=true \
+                    -s firstBrokerLoginFlowAlias="first broker login" \
+                    -s "config.clientId=$G_CLIENT_ID" \
+                    -s "config.clientSecret=$G_CLIENT_SECRET" \
+                    -s "config.defaultScope=openid profile email" \
+                    -s "config.syncMode=IMPORT" >/dev/null 2>&1 || true
+                fi
+
+                # Hapus Facebook Identity Provider jika sebelumnya sempat dibuat
+                docker exec $CONTAINER_NAME /opt/keycloak/bin/kcadm.sh delete identity-provider/instances/facebook -r rasa >/dev/null 2>&1 || true
+                break
+              fi
+              sleep 3
+            done
+
+            # 4. Deteksi otomatis path mount ACME Challenge pada container rasa-shared-proxy
+            ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
+            ACME_CONTAINER_DIR="/var/lib/letsencrypt"
+
+            if [ -z "$ACME_HOST_DIR" ]; then
+              ACME_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/www/certbot"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
+              if [ -n "$ACME_HOST_DIR" ]; then
+                ACME_CONTAINER_DIR="/var/www/certbot"
+              fi
+            fi
+
+            if [ -z "$ACME_HOST_DIR" ]; then
+              ACME_HOST_DIR="/var/www/RASA/INFRA/certbot/www"
+              ACME_CONTAINER_DIR="/var/lib/letsencrypt"
+            fi
+
+            CERT_HOST_DIR=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/letsencrypt"}}{{.Source}}{{end}}{{end}}' rasa-shared-proxy 2>/dev/null || echo "")
+            if [ -z "$CERT_HOST_DIR" ]; then
+              CERT_HOST_DIR="/var/www/RASA/INFRA/certbot/conf"
+            fi
+
+            mkdir -p "$ACME_HOST_DIR/.well-known/acme-challenge"
+            chmod -R 755 "$ACME_HOST_DIR"
+
+            # 5. Request SSL Certbot jika belum ada
+            if [ ! -f "$CERT_HOST_DIR/live/$DOMAIN/fullchain.pem" ]; then
+              echo "server {" > $PROXY_CONF
+              echo "    listen 80;" >> $PROXY_CONF
+              echo "    server_name $DOMAIN;" >> $PROXY_CONF
+              echo "    location ^~ /.well-known/acme-challenge/ {" >> $PROXY_CONF
+              echo "        default_type \"text/plain\";" >> $PROXY_CONF
+              echo "        root $ACME_CONTAINER_DIR;" >> $PROXY_CONF
+              echo "    }" >> $PROXY_CONF
+              echo "    location / { return 301 https://\$host\$request_uri; }" >> $PROXY_CONF
+              echo "}" >> $PROXY_CONF
+
+              docker exec rasa-shared-proxy nginx -t && docker exec rasa-shared-proxy nginx -s reload
+              sleep 2
+
+              docker run --rm \
+                -v "$CERT_HOST_DIR:/etc/letsencrypt" \
+                -v "$ACME_HOST_DIR:$ACME_CONTAINER_DIR" \
+                certbot/certbot certonly --webroot \
+                --webroot-path=$ACME_CONTAINER_DIR \
+                --email admin@rasagroup.global --agree-tos --no-eff-email \
+                -d $DOMAIN || true
+            fi
+
+            # Fallback ke Wildcard / Existing Certificate jika masih belum terbit
+            SSL_CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+            SSL_KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+            if [ ! -f "$CERT_HOST_DIR/live/$DOMAIN/fullchain.pem" ]; then
+              FALLBACK_DOMAIN=$(ls -1 "$CERT_HOST_DIR/live" 2>/dev/null | grep -v "README" | head -n 1 || echo "")
+              if [ -n "$FALLBACK_DOMAIN" ]; then
+                echo "WARNING: Cert for $DOMAIN not found, falling back to $FALLBACK_DOMAIN cert temporarily"
+                SSL_CERT="/etc/letsencrypt/live/$FALLBACK_DOMAIN/fullchain.pem"
+                SSL_KEY="/etc/letsencrypt/live/$FALLBACK_DOMAIN/privkey.pem"
+              fi
+            fi
+
+            # 6. Update Nginx Proxy ke HTTPS Reverse Proxy Keycloak
+            echo "server {" > $PROXY_CONF
+            echo "    listen 80;" >> $PROXY_CONF
+            echo "    server_name $DOMAIN;" >> $PROXY_CONF
+            echo "    location ^~ /.well-known/acme-challenge/ {" >> $PROXY_CONF
+            echo "        default_type \"text/plain\";" >> $PROXY_CONF
+            echo "        root $ACME_CONTAINER_DIR;" >> $PROXY_CONF
+            echo "    }" >> $PROXY_CONF
+            echo "    location / { return 301 https://\$host\$request_uri; }" >> $PROXY_CONF
+            echo "}" >> $PROXY_CONF
+            echo "server {" >> $PROXY_CONF
+            echo "    listen 443 ssl;" >> $PROXY_CONF
+            echo "    server_name $DOMAIN;" >> $PROXY_CONF
+            echo "    ssl_certificate $SSL_CERT;" >> $PROXY_CONF
+            echo "    ssl_certificate_key $SSL_KEY;" >> $PROXY_CONF
+            echo "    include /etc/nginx/conf.d/proxy_params;" >> $PROXY_CONF
+            echo "    resolver 127.0.0.11 valid=10s ipv6=off;" >> $PROXY_CONF
+            echo "    client_max_body_size 20M;" >> $PROXY_CONF
+            echo "    proxy_buffer_size 128k;" >> $PROXY_CONF
+            echo "    proxy_buffers 8 256k;" >> $PROXY_CONF
+            echo "    proxy_busy_buffers_size 256k;" >> $PROXY_CONF
+            echo "    large_client_header_buffers 4 32k;" >> $PROXY_CONF
+            echo "    location / {" >> $PROXY_CONF
+            echo "        set \$backend http://$CONTAINER_NAME:8080;" >> $PROXY_CONF
+            echo "        proxy_pass \$backend;" >> $PROXY_CONF
+            echo "        proxy_http_version 1.1;" >> $PROXY_CONF
+            echo "        proxy_set_header Host \$host;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Real-IP \$remote_addr;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-Proto https;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-Host \$host;" >> $PROXY_CONF
+            echo "        proxy_set_header X-Forwarded-Port 443;" >> $PROXY_CONF
+            echo "        proxy_read_timeout 120s;" >> $PROXY_CONF
+            echo "    }" >> $PROXY_CONF
+            echo "}" >> $PROXY_CONF
+
+            docker exec rasa-shared-proxy nginx -t && docker exec rasa-shared-proxy nginx -s reload
+            echo "Deployment Rasa SSO ($DOMAIN) selesai!"
