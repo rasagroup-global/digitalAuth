@@ -6,13 +6,14 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:${DOCKER_TAG:-26.0}
     container_name: ${PROJECT_NAME:-sso-dev}-app
-    restart: always
+    restart: unless-stopped
     command:
       - start
       - --import-realm
-      - --optimized
     env_file: .env
     environment:
+      KEYCLOAK_ADMIN: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
       KC_DB: postgres
@@ -27,6 +28,8 @@ services:
       KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET}
       KEYCLOAK_CMS_CLIENT_SECRET: ${KEYCLOAK_CMS_CLIENT_SECRET}
       KEYCLOAK_COMMERCE_CLIENT_SECRET: ${KEYCLOAK_COMMERCE_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       JAVA_OPTS_APPEND: ${JAVA_OPTS_APPEND:--Xms256m -Xmx640m}
     volumes:
       - ./realms:/opt/keycloak/data/import:ro

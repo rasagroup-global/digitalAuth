@@ -1,7 +1,7 @@
 {
   "id": "rasa",
   "realm": "rasa",
-  "displayName": "Rasa Group SSO",
+  "displayName": "Rasa Account",
   "displayNameHtml": "<div class=\"kc-logo-text\"><span>RASA KOPI</span></div>",
   "enabled": true,
   "sslRequired": "external",
@@ -83,7 +83,7 @@
       "description": "Central Backend API & Single Source of Truth Synchronizer",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "${env.KEYCLOAK_API_CLIENT_SECRET}",
+      "secret": "rasa-api-secret-dev-2026",
       "publicClient": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
@@ -181,7 +181,7 @@
       "description": "Admin, Cashier, and Kitchen Web Application (digitalCms)",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "${env.KEYCLOAK_CMS_CLIENT_SECRET}",
+      "secret": "rasa-cms-secret-dev-2026",
       "publicClient": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
@@ -256,7 +256,7 @@
       "description": "WooCommerce B2C & B2B Storefront (shop-dev.rasakopi.coffee / shop.rasakopi.coffee)",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "${env.KEYCLOAK_COMMERCE_CLIENT_SECRET}",
+      "secret": "rasa-commerce-secret-dev-2026",
       "publicClient": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
@@ -351,6 +351,28 @@
       "webOrigins": [
         "+"
       ]
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google",
+      "providerId": "google",
+      "enabled": true,
+      "updateProfileFirstLoginMode": "on",
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${env.GOOGLE_CLIENT_ID}",
+        "clientSecret": "${env.GOOGLE_CLIENT_SECRET}",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT",
+        "guiOrder": "1"
+      }
     }
   ],
   "users": [
