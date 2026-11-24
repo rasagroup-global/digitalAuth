@@ -33,12 +33,12 @@
       prefixWrap.className = "rasa-phone-prefix-wrap";
       prefixWrap.innerHTML =
         '<select id="rasa-country-code" aria-label="Country code" class="rasa-country-select">' +
-        '  <option value="" selected>Email / Tel</option>' +
-        '  <option value="+49">+49 (DE)</option>' +
-        '  <option value="+62">+62 (ID)</option>' +
-        '  <option value="+43">+43 (AT)</option>' +
-        '  <option value="+41">+41 (CH)</option>' +
-        '  <option value="+31">+31 (NL)</option>' +
+        '  <option value="" selected>Email / +</option>' +
+        '  <option value="+49">+49 DE</option>' +
+        '  <option value="+62">+62 ID</option>' +
+        '  <option value="+43">+43 AT</option>' +
+        '  <option value="+41">+41 CH</option>' +
+        '  <option value="+31">+31 NL</option>' +
         "</select>";
 
       controlSpan.insertBefore(prefixWrap, usernameInput);
